@@ -139,6 +139,7 @@ package starling.core
         private var mViewPort:Rectangle;
         private var mLeftMouseDown:Boolean;
         private var mStatsDisplay:StatsDisplay;
+        private var mDeferContextCalls:Boolean;
         
         private var mNativeStage:flash.display.Stage;
         private var mNativeOverlay:flash.display.Sprite;
@@ -187,6 +188,7 @@ package starling.core
             mLastFrameTimestamp = getTimer() / 1000.0;
             mPrograms = new Dictionary();
             mSupport  = new RenderSupport();
+            mDeferContextCalls = false;
             
             // register touch/mouse event handlers            
             for each (var touchEventType:String in touchEventTypes)
@@ -198,11 +200,15 @@ package starling.core
             stage.addEventListener(KeyboardEvent.KEY_UP, onKey, false, 0, true);
             stage.addEventListener(Event.RESIZE, onResize, false, 0, true);
             
-            mStage3D.addEventListener(Event.CONTEXT3D_CREATE, onContextCreated, false, 1, true);
-            mStage3D.addEventListener(ErrorEvent.ERROR, onStage3DError, false, 1, true);
+            if (mStage3D.context3D==null) {
+           	    mStage3D.addEventListener(Event.CONTEXT3D_CREATE, onContextCreated, false, 1, true);
+                mStage3D.addEventListener(ErrorEvent.ERROR, onStage3DError, false, 1, true);
             
-            try { mStage3D.requestContext3D(renderMode); } 
-            catch (e:Error) { showFatalError("Context3D error: " + e.message); }
+           	    try { mStage3D.requestContext3D(renderMode); } 
+                catch (e:Error) { showFatalError("Context3D error: " + e.message); }
+            } else {
+	              initializeStarling();
+            }
         }
         
         /** Disposes Shader programs and render context. */
@@ -222,7 +228,7 @@ package starling.core
             for each (var program:Program3D in mPrograms)
                 program.dispose();
             
-            if (mContext) mContext.dispose();
+            if (!mDeferContextCalls && mContext) mContext.dispose();
             if (mTouchProcessor) mTouchProcessor.dispose();
             if (mSupport) mSupport.dispose();
             if (sCurrent == this) sCurrent = null;
@@ -253,7 +259,7 @@ package starling.core
         
         private function updateViewPort():void
         {
-            if (mContext && mContext.driverInfo != "Disposed")
+            if (!mDeferContextCalls && mContext && mContext.driverInfo != "Disposed")
                 mContext.configureBackBuffer(mViewPort.width, mViewPort.height, mAntiAliasing, false);
             
             mStage3D.x = mViewPort.x;
@@ -276,7 +282,7 @@ package starling.core
             if (mContext == null || mContext.driverInfo == "Disposed")
                 return;
             
-            RenderSupport.clear(mStage.color, 1.0);
+            if (!mDeferContextCalls) RenderSupport.clear(mStage.color, 1.0);
             mSupport.setOrthographicProjection(mStage.stageWidth, mStage.stageHeight);
             
             mStage.render(mSupport, 1.0);
@@ -284,9 +290,18 @@ package starling.core
             mSupport.finishQuadBatch();
             mSupport.nextFrame();
             
-            mContext.present();
+            if (!mDeferContextCalls) mContext.present();
         }
         
+        public function renderFrame():void
+        {
+            makeCurrent();
+            
+            if (mNativeOverlay) updateNativeOverlay();
+            advanceTime();
+            render(); 
+        }
+
         private function updateNativeOverlay():void
         {
             mNativeOverlay.x = mViewPort.x;
@@ -351,6 +366,10 @@ package starling.core
         
         private function onContextCreated(event:Event):void
         {
+			initializeStarling();
+		}
+		
+		private function initializeStarling():void {
             if (!Starling.handleLostContext && mContext)
             {
                 showFatalError("Fatal error: The application lost the device context!");
@@ -649,5 +668,10 @@ package starling.core
             else
                 sHandleLostContext = value;
         }
+
+        /** Indicates if the Context3D render calls are managed externally to Starling, 
+         *  to allow other frameworks to share the Stage3D. @default false */
+        public function get deferContextCalls():Boolean { return mDeferContextCalls; }
+        public function set deferContextCalls(value:Boolean):void { mDeferContextCalls = value; }
     }
 }
