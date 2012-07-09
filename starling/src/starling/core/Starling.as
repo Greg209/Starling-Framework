@@ -343,6 +343,11 @@ package starling.core
             
             if (!mShareContext)
                 RenderSupport.clear(mStage.color, 1.0);
+			else {
+				mContext.setScissorRectangle(mViewPort);
+				mSupport.translateMatrix(mViewPort.x, mViewPort.y);
+			}
+				
             
             mSupport.setOrthographicProjection(mStage.stageWidth, mStage.stageHeight);
             mStage.render(mSupport, 1.0);
@@ -351,6 +356,8 @@ package starling.core
             
             if (!mShareContext)
                 mContext.present();
+			else 
+				mContext.setScissorRectangle(null);
         }
         
         private function updateViewPort():void
